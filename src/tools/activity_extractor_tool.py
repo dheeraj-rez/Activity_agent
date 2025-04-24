@@ -1,20 +1,64 @@
 import os
-from mistralai import Mistral
 import fitz  # PyMuPDF 
 from openai import OpenAI
 import numpy as np
 import json
 import faiss
-from src.tools.clients import openai_client
+from src.tools.clients import openai_client, mistral_client
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def extract_text_with_mistral(url: str, mistral_api_key: str) -> dict:
+def need_ocr(pdf_path: str, pages_to_check: int = 5) -> bool:
+    """
+    Return True if the first `pages_to_check` pages contain fewer than
+    MIN_CHARS_PER_PAGE characters each (likely image‑only).
+    """
+    minimum_chars_per_page = 50
+    try:
+        doc = fitz.open(pdf_path)
+        for i in range(min(pages_to_check, len(doc))):
+            page = doc[i]
+            text = page.get_text("text").strip()
+            if len(text) > minimum_chars_per_page:
+                return False
+        doc.close()
+        print(f"🚨 PDF likely contains images only. OCR is required for {pdf_path}.")
+        return True
+    except Exception as e:
+        print(f"🚨 Error checking PDF for OCR: {e}")
+        return False
+
+def get_pdf_signed_url(pdf_path: str) -> str:
+    """
+    Upload a PDF to Mistral's file store for OCR and return the signed URL.
+    """
+    if not os.path.exists(pdf_path):
+        print(f"🚨 PDF file not found: {pdf_path}")
+        return None
+    
+    print("Uploading PDF to Mistral's file store for OCR...")
+    
+    with open(pdf_path, "rb") as f:
+        uploaded = mistral_client.files.upload(
+            file={
+                "file_name": os.path.basename(pdf_path),
+                "content": f,
+            },
+            purpose="ocr"
+        )
+    if not uploaded:
+        print("🚨 Failed to upload PDF to Mistral's file store.")
+        return None
+    
+    url = mistral_client.files.get_signed_url(file_id=uploaded.id).url
+    print(f"🚀 PDF uploaded successfully. Signed URL: {url}")
+    return url
+
+def extract_text_with_mistral(url: str) -> dict:
     """Extract text from a PDF with images using Mistral AI OCR, using sequential page numbering."""
 
-    mistral_client = Mistral(api_key=mistral_api_key)
     if not mistral_client:
         print("🚨 Mistral client not initialized. Check your API key.")
         return {}
@@ -197,39 +241,36 @@ def save_results_to_json(results: list, file_name: str = "activities.json", outp
     
     return f"Results saved to {out_path}"
 
-def extract_activities_from_pdf(pdf_path: str = None, use_ocr: bool = False, doc_url: str = None) -> str:
+def extract_activities_from_pdf(pdf_path: str = None) -> str:
+    """
+    Extract activities from a PDF file and save them to a JSON file.    
+    """
+    if pdf_path is None:
+        print("🚨 No PDF path provided.")
+        return "Please provide a valid PDF file path."
+    
+    if not os.path.exists(pdf_path):
+        print(f"🚨 PDF file not found: {pdf_path}")
+        return "Pdf file not found at the specified path."
+
+    if not pdf_path.lower().endswith('.pdf'):
+        print(f"🚨 Invalid file type: {pdf_path}. Only PDF files are supported.")
+        return "Invalid file type. Only PDF files are supported."
+
+    # Check if OCR is needed based on the PDF content
+    use_ocr = need_ocr(pdf_path)
 
     if use_ocr:
-        if not os.getenv("MISTRAL_API_KEY"):
-            print("🚨 Mistral API key not set in environment variables.")
-            return "Please set the Mistral API key in the environment variables."
-        elif doc_url is None:
-            print("🚨 No document URL provided for Mistral OCR.")
-            return "Please provide a document URL for Mistral OCR."
-        elif not doc_url.startswith("http"):
-            print("🚨 Invalid document URL provided for Mistral OCR.")
-            return "Please provide a valid document URL for Mistral OCR."
+        doc_url = get_pdf_signed_url(pdf_path)
+        if not doc_url:
+            print("🚨 Failed to get signed URL for OCR processing.")
+            return "Failed to get signed URL for OCR processing."
         else:
-            mistral_api_key = os.getenv("MISTRAL_API_KEY")
-            pages = extract_text_with_mistral(doc_url, mistral_api_key)
+            pages = extract_text_with_mistral(doc_url)
             output_dir = Path(r"D:\Python\LangChain-Tutorial\Activity_agent\output")
             file_name = "activities.json"
     else:
-        if pdf_path is None:
-            print("🚨 No PDF path provided.")
-            return "Please provide a valid PDF file path."
-        
-        if not os.path.exists(pdf_path):
-            print(f"🚨 PDF file not found: {pdf_path}")
-            return "Pdf file not found at the specified path."
-    
-        if not pdf_path.lower().endswith('.pdf'):
-            print(f"🚨 Invalid file type: {pdf_path}. Only PDF files are supported.")
-            return "Invalid file type. Only PDF files are supported."
-        
         pages = extract_text_with_pymupdf(pdf_path)
-        output_dir = Path(pdf_path).resolve().parent
-        file_name = Path(pdf_path).stem + "_activities.json"
 
     if not pages:
         print("🚨 No pages extracted from the PDF.")
@@ -241,7 +282,9 @@ def extract_activities_from_pdf(pdf_path: str = None, use_ocr: bool = False, doc
         return "Failed to build vector store."
     
     activities = search_activity(index, text_data)
-    
+    output_dir = Path(pdf_path).resolve().parent
+    file_name = Path(pdf_path).stem + "_activities.json"
+
     if not activities:
         print("🚨 No activities found in the PDF.")
         return "No activities found in the PDF."
