@@ -1,4 +1,4 @@
-# LangChain Tutorial: Activity Agent
+# LangChain: Activity Agent
 
 This project demonstrates the use of LangChain to build an Activity Agent. The agent is designed to perform specific tasks by leveraging the power of language models.
 
