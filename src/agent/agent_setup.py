@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import Tool, AgentExecutor, create_openai_functions_agent
 from src.tools.activity_extractor_tool import extract_activities_from_pdf
 from src.tools.activity_match_tool import activity_match_wrapper
+from src.tools.activity_filter_tool import activity_filter_wrapper
 from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import SQLChatMessageHistory
@@ -53,8 +54,14 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
             description=( 
                 "Use ONLY to compare activities between TWO JSON files: a 'Master JSON' file (usually the output from TextbookActivityExtractor) and a 'User JSON' file. Finds activities from the Master JSON that match those in the User JSON and saves ONLY these MATCHING activities to a NEW file (e.g., 'master_activities_matching.json'). IMPORTANT: Returns a success message including the full file path to the new 'matching' JSON file. Input MUST clearly provide BOTH file paths (e.g., '/path/master.json, /path/user.json')."
             )
+        ),
+        Tool(
+            name="ActivityFilter",
+            func=activity_filter_wrapper, 
+            description=(
+                "Use ONLY to find activities in a 'Master JSON' that are NOT present in a 'Matching JSON' (the output file from ActivityMatcher). Saves these NON-MATCHING (unique to master) activities to a NEW file. Returns a message including the full path to the new 'filtered' JSON file. Input MUST clearly provide BOTH file paths (Master first, then Matching)."
+            )
         )
-
     ]
     print(f"Tools defined: {[tool.name for tool in tools]}")
 
@@ -63,6 +70,7 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
         ("system", "You are a helpful assistant for processing textbook activities. You have two tools:\n"
                    "1. TextbookActivityExtractor: Extracts ALL activities from a PDF to a Master JSON file.\n"
                    "2. ActivityMatcher: Compares a Master JSON and a User JSON, saving MATCHING activities to a new file.\n"
+                   "3. ActivityFilter: Compares Master JSON and Matching JSON (output of Tool 2), saves NON-MATCHING activities to a new file.\n"
                    "Use the chat history to find file paths mentioned in previous turns. If you need two paths for ActivityMatcher and only have one, ask the user for the missing one.\n"
                    "IMPORTANT: When asked about file locations, SEARCH the chat history for messages where tools reported saving files (e.g., 'Results saved to \'/path/to/file.json\''). Report the exact path found in the history if relevant to the user's query. If no specific file path is found in the history related to the query, explain that."
                    ),

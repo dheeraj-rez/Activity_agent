@@ -1,4 +1,5 @@
 from src.tools.clients import openai_client
+from src.utils.helper import parse_json_file
 import json
 import os
 import math
@@ -47,7 +48,7 @@ Return the matched results in an array format.
 """
 
 # tool to match activities in JSON1 and JSON2
-def match_activities(master_json_path, users_json_path):
+def match_activities(master_json_path, users_json_path) -> str:
     """
     Match activities from two JSON files using OpenAI API.
     args:
@@ -59,6 +60,10 @@ def match_activities(master_json_path, users_json_path):
     batch_size = 10  # You can adjust this depending on how long your activities are
     all_matches = []
     
+    # Check if the provided paths are valid JSON files
+    if not (master_json_path.endswith('.json') and users_json_path.endswith('.json')):
+        return "Invalid input. Please provide valid JSON file paths."
+
     # Checking if the files exist
     if not os.path.exists(master_json_path):
         return f"Master JSON file not found: {master_json_path}"
@@ -71,6 +76,13 @@ def match_activities(master_json_path, users_json_path):
 
     with open(users_json_path, "r") as f2:
         json2 = json.load(f2)
+
+    # Check if the JSON data is loaded correctly
+    if json1 is None or json2 is None:
+        return "Error loading JSON data. Please check the file contents."
+    # Check if the JSON data is in the expected format
+    if not isinstance(json1, list) or not isinstance(json2, list):
+        return "Invalid JSON format. Expected a list of activities."
 
     # Chunking logic
     for i in range(0, len(json1), batch_size):
@@ -106,31 +118,20 @@ def match_activities(master_json_path, users_json_path):
         output_dir = Path(master_json_path).parent.resolve()
         output_path = os.path.join(output_dir, "matched_activities.json")
 
-        # Save final results to a JSON file
-        with open(output_path, "w") as outfile:
-            json.dump(all_matches, outfile, indent=2)
-        return f"Matched activities saved to {output_path}"
+        try:
+            # Save final results to a JSON file
+            with open(output_path, "w") as outfile:
+                json.dump(all_matches, outfile, indent=2)
+            
+            return f"Matched activities saved to {output_path}"
+        except Exception as e:
+            print(f"Error saving matched activities: {e}")
+            return f"Error saving matched activities: {e}"
     else:
         return "No matches found in the provided JSON files."
 
-# ---- Helper function ----
-def parse_json_file(input_str: str) -> tuple[str | None, str | None]:
-    input_str = input_str.strip()
-    if not input_str:
-        return None, None
-    
-    # Regex to find JSON file paths in the input string
-    paths = re.findall(r"['\"]?([^,'\"\s]+\.json)['\"]?", input_str)
 
-    if len(paths) >= 2:
-        path1 = Path(paths[0]).as_posix()
-        path2 = Path(paths[1]).as_posix()
-        print(f"Parser found two paths: {path1}, {path2}")
-        return path1, path2
-    else:
-        print("Parser did not find two valid JSON file paths.")
-        return None, None
-
+# Wrapper function to parse input string and call the match_activities function
 def activity_match_wrapper(input_str: str) -> str:
     """
     Wrapper function to parse input string and call the match_activities function.
