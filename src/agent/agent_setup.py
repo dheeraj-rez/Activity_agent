@@ -4,8 +4,17 @@ from src.tools.activity_extractor_tool import extract_activities_from_pdf
 from src.tools.activity_match_tool import activity_match_wrapper
 from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_community.chat_message_histories import SQLChatMessageHistory
+from sqlalchemy import create_engine
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from pathlib import Path
+
+# Database for the agent executor
+DB_DIR = Path(__file__).resolve().parent.parent / "db"
+DB_DIR.mkdir(parents=True, exist_ok=True)
+DB_FILE = DB_DIR / "chat_history.db"
+CONNECTION_STRING = f"sqlite:///{DB_FILE.resolve()}"
+print("Using SQLite database for chat history:", CONNECTION_STRING)
 
 # Create the agent executor with memory for handling multiple sessions
 def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
@@ -54,7 +63,9 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
         ("system", "You are a helpful assistant for processing textbook activities. You have two tools:\n"
                    "1. TextbookActivityExtractor: Extracts ALL activities from a PDF to a Master JSON file.\n"
                    "2. ActivityMatcher: Compares a Master JSON and a User JSON, saving MATCHING activities to a new file.\n"
-                   "Use the chat history to find file paths mentioned in previous turns. If you need two paths for ActivityMatcher and only have one, ask the user for the missing one."),
+                   "Use the chat history to find file paths mentioned in previous turns. If you need two paths for ActivityMatcher and only have one, ask the user for the missing one.\n"
+                   "IMPORTANT: When asked about file locations, SEARCH the chat history for messages where tools reported saving files (e.g., 'Results saved to \'/path/to/file.json\''). Report the exact path found in the history if relevant to the user's query. If no specific file path is found in the history related to the query, explain that."
+                   ),
         MessagesPlaceholder(variable_name="chat_history"), # <<< Where memory goes
         ("user", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"), # Where agent thoughts go
@@ -81,19 +92,16 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
         print(f"ERROR: Failed to create the Agent Executor: {executor_create_err}")
         raise
 
-    print("Creating memory for the agent...")
+    print("Setting up sqlite database for chat history...")
     # Initialize memory for the agent
-    message_history_store = {}
-
-    # This is a custom memory class that uses the InMemoryChatMessageHistory to store messages
+    # This is where the chat history will be stored
     def get_session_history(session_id: str) -> BaseChatMessageHistory:
-        """Retrieves or creates message history for a given session ID."""
-        print(f"Received session_id: {session_id}") 
-        if session_id not in message_history_store:
-            message_history_store[session_id] = ChatMessageHistory()
-            print(f"Created new history for session: {session_id}")
-
-        return message_history_store[session_id]
+        """Retrieves SQLChatHistory for a given session ID."""
+        print(f"Accessing history for session_id: {session_id} using SQLite.") 
+        return SQLChatMessageHistory(
+            session_id=session_id,
+            connection=create_engine(CONNECTION_STRING)
+        )
     
     # Create a memory object that uses the message history store
     agent_executor_with_history = RunnableWithMessageHistory(

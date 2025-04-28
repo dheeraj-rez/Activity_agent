@@ -12,6 +12,17 @@ def run_agent_query(agent_executor, query: str):
     except Exception as e:
         print(f"An error occurred: {e}")
 
+def session_id_generator():
+    """Generates a unique session ID."""
+    # Generate a unique session ID for the agent
+    session_id = str(uuid.uuid4())
+    print("-" * 30)
+    print(f"Session ID: {session_id}")
+    print("This session ID is unique to this run and can be used to track the conversation history.")
+    print("You can use this ID to refer to this session in future queries.")
+    print("-" * 30)
+    return session_id
+
 if __name__ == "__main__":
     print("Loading configuration and initializing agent...")
     try:
@@ -21,17 +32,17 @@ if __name__ == "__main__":
 
         print("Agent created successfully.")
 
-        # Generate a unique session ID for the agent
-        session_id = str(uuid.uuid4())
-        print("-" * 30)
-        print(f"Session ID: {session_id}")
-        print("This session ID is unique to this run and can be used to track the conversation history.")
-        print("You can use this ID to refer to this session in future queries.")
-        print("-" * 30)
-
         # Prompt the user for input
         print("Agent initialized.")
         print("Enter your query below (type 'exit' or 'quit' to stop):")
+
+        # Handling session 
+        existing_session_id = input("Eneter existing session ID (or press Enter to create a new one): ").strip()
+        if existing_session_id:
+            session_id = existing_session_id
+            print(f"Using existing session ID: {session_id}")
+        else:
+            session_id = session_id_generator()
 
         while True:
             user_query = input("> You: ")
