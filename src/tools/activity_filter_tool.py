@@ -23,7 +23,6 @@ def activity_filter(master_json_path: str, match_json_path: str) -> str:
     if not os.path.isfile(match_json_path):
         return f"Match JSON file not found: {match_json_path}"
     
-
     # Load the master and match JSON files
     with open(master_json_path, "r") as f:
         master_data = json.load(f)

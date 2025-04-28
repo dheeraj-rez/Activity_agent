@@ -3,6 +3,7 @@ from langchain.agents import Tool, AgentExecutor, create_openai_functions_agent
 from src.tools.activity_extractor_tool import extract_activities_from_pdf
 from src.tools.activity_match_tool import activity_match_wrapper
 from src.tools.activity_filter_tool import activity_filter_wrapper
+from src.tools.activity_generator_tool import generate_activities
 from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import SQLChatMessageHistory
@@ -61,6 +62,13 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
             description=(
                 "Use ONLY to find activities in a 'Master JSON' that are NOT present in a 'Matching JSON' (the output file from ActivityMatcher). Saves these NON-MATCHING (unique to master) activities to a NEW file. Returns a message including the full path to the new 'filtered' JSON file. Input MUST clearly provide BOTH file paths (Master first, then Matching)."
             )
+        ),
+        Tool(
+            name="ActivityGenerator",
+            func=generate_activities, 
+            description=(
+                "Use ONLY to generate NEW, improved, hands-on classroom activities based on a list of existing activities provided in a JSON file (typically the output of ActivityFilter, e.g., '..._filtered.json'). It uses an LLM to create 4 or fewer high-quality activities following specific criteria (safety, material accessibility, concept depth etc.) Saves these newly generated activities to a NEW file ('new_activities.json' in the same directory as the input). Returns a message including the full path to this 'new_activities.json' file. Input MUST be the file path to the JSON containing the activities to be used as inspiration."
+            )
         )
     ]
     print(f"Tools defined: {[tool.name for tool in tools]}")
@@ -72,6 +80,7 @@ def create_agent(openai_api_key: str, verbose: bool = True) -> AgentExecutor:
                    "2. ActivityMatcher: Compares a Master JSON and a User JSON, saving MATCHING activities to a new file.\n"
                    "3. ActivityFilter: Compares Master JSON and Matching JSON (output of Tool 2), saves NON-MATCHING activities to a new file.\n"
                    "Use the chat history to find file paths mentioned in previous turns. If you need two paths for ActivityMatcher and only have one, ask the user for the missing one.\n"
+                   "4. ActivityGenerator: Takes Filtered JSON -> NEW activities JSON (using LLM generation).\n"
                    "IMPORTANT: When asked about file locations, SEARCH the chat history for messages where tools reported saving files (e.g., 'Results saved to \'/path/to/file.json\''). Report the exact path found in the history if relevant to the user's query. If no specific file path is found in the history related to the query, explain that."
                    ),
         MessagesPlaceholder(variable_name="chat_history"), # <<< Where memory goes
