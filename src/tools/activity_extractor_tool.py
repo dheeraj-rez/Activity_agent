@@ -1,9 +1,8 @@
 import os
 import fitz  # PyMuPDF 
-from openai import OpenAI
 import numpy as np
 import json
-import faiss
+# import faiss # Uncomment if you want to use FAISS for vector store
 from src.tools.clients import openai_client, mistral_client
 from pathlib import Path
 from dotenv import load_dotenv
@@ -129,7 +128,9 @@ def get_embedding(text):
 def build_vector_store(pages):
     """Create FAISS vector store for textbook pages."""
     dimension = 1536
-    index = faiss.IndexFlatL2(dimension)
+    # Uncomment the following line if you want to use indexing
+    # index = faiss.IndexFlatL2(dimension)
+    index = None
     text_data = []
     
     for page, text in pages.items():
@@ -137,9 +138,11 @@ def build_vector_store(pages):
             print(f"Skipping embedding for page {page} due to empty text")
             text_data.append({"page": page, "text": text})
             continue
-        embedding = get_embedding(text)
+        # Uncomment the following line if you want to use embeddings
+        # embedding = get_embedding(text)
+        embedding = True
         if embedding is not None:
-            index.add(np.array([embedding], dtype=np.float32))
+            # index.add(np.array([embedding], dtype=np.float32))
             text_data.append({"page": page, "text": text})
     
     return index, text_data
@@ -277,7 +280,7 @@ def extract_activities_from_pdf(pdf_path: str = None) -> str:
         return "No pages extracted from the PDF."
     
     index, text_data = build_vector_store(pages)
-    if index is None or text_data is None:
+    if text_data is None:
         print("🚨 Failed to build vector store.")
         return "Failed to build vector store."
     
@@ -295,5 +298,5 @@ def extract_activities_from_pdf(pdf_path: str = None) -> str:
         return save_results
     
 if __name__ == "__main__":
-    pdf_path = r"C:\Users\LPT029\Downloads\CLS_7-1-20.pdf"
+    pdf_path = r"C:\Users\LPT029\Downloads\CLS_7.pdf"
     extract_activities_from_pdf(pdf_path)
